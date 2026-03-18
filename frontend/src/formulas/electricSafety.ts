@@ -39,7 +39,7 @@ export function totalBodyImpedance(skinImpedanceOhm: number, internalResistanceO
 
 /**
  * Импеданс наружного слоя кожи Zн, Ом. (формула 9.4)
- * Zн = √(Rн² + (1/(2πfC))²)
+ * Zн = Rн / √(1 + (2π f C Rн)²)
  */
 export function skinImpedance(
   skinResistanceOhm: number,
@@ -49,8 +49,8 @@ export function skinImpedance(
   assertFiniteNonNegative(skinResistanceOhm, 'skinResistanceOhm');
   assertFinitePositive(frequencyHz, 'frequencyHz');
   assertFinitePositive(capacitanceF, 'capacitanceF');
-  const xc = 1 / (2 * Math.PI * frequencyHz * capacitanceF);
-  return Math.sqrt(skinResistanceOhm ** 2 + xc ** 2);
+  const term = 2 * Math.PI * frequencyHz * capacitanceF * skinResistanceOhm;
+  return skinResistanceOhm / Math.sqrt(1 + term * term);
 }
 
 /**

@@ -68,7 +68,7 @@
     {
       "id": "f9-2",
       "label": "Полное сопротивление тела (9.2)",
-      "expression": "Z = √((2Rн + Rв)² + (1/(π·f·C))²)",
+      "expression": "Z = (Rв + 2Rн) / √(1 + (2π·f·C·Rн)²)",
       "imagePath": "/src/assets/formula 9.2.png",
       "variables": [
         { "symbol": "Z", "description": "Полное сопротивление тела", "unit": "Ом" },

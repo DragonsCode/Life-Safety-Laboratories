@@ -56,10 +56,11 @@
     {
       "id": "f7-1",
       "label": "Условие волновой зоны (7.1)",
-      "expression": "d >> λ / (2π)",
+      "expression": "d > 2·L²/λ",
       "imagePath": "/src/assets/formula 7.1.png",
       "variables": [
         { "symbol": "d", "description": "Расстояние от антенны до точки измерения", "unit": "м" },
+        { "symbol": "L", "description": "Максимальный размер антенны", "unit": "м" },
         { "symbol": "λ", "description": "Длина волны", "unit": "м" }
       ],
       "explanation": "Условие определяет, находится ли точка измерения в дальней (волновой) зоне, где можно рассчитывать напряженность поля."
@@ -67,11 +68,11 @@
     {
       "id": "f7-2",
       "label": "Формула Шулейкина–Ван-дер-Поля (7.2)",
-      "expression": "E = (245 · √(P · Ga)) / (d · F)",
+      "expression": "E = 7.750 · √(P · Ga) · F / d",
       "imagePath": "/src/assets/formula 7.2.png",
       "variables": [
         { "symbol": "E", "description": "Напряжённость электрической составляющей ЭМП", "unit": "В/м" },
-        { "symbol": "P", "description": "Мощность передатчика", "unit": "Вт" },
+        { "symbol": "P", "description": "Мощность передатчика", "unit": "кВт" },
         { "symbol": "Ga", "description": "Коэффициент усиления антенны", "unit": "—" },
         { "symbol": "d", "description": "Расстояние до точки измерения", "unit": "м" },
         { "symbol": "F", "description": "Множитель ослабления (потери в почве)", "unit": "—" }
@@ -81,7 +82,7 @@
     {
       "id": "f7-3",
       "label": "Множитель ослабления (7.3)",
-      "expression": "F = 2 + 0.3x / (2 + x + 0.6x²)",
+      "expression": "F = 1.41 · (2 + 0.3x) / (2 + x + 0.6x²)",
       "imagePath": "/src/assets/formula 7.3.png",
       "variables": [
         { "symbol": "F", "description": "Множитель ослабления", "unit": "—" },
@@ -92,24 +93,22 @@
     {
       "id": "f7-4",
       "label": "Условие для длинных и средних волн (7.4)",
-      "expression": "18000 · δ / f >> 1",
+      "expression": "60λ >> 0",
       "imagePath": "/src/assets/formula 7.4.png",
       "variables": [
-        { "symbol": "δ", "description": "Радиопроводимость почвы", "unit": "См/м" },
-        { "symbol": "f", "description": "Частота", "unit": "Гц" }
+        { "symbol": "λ", "description": "Длина волны", "unit": "м" }
       ],
       "explanation": "Если условие выполняется, то для расчёта x используется формула для длинных и средних волн."
     },
     {
       "id": "f7-5",
       "label": "Параметр x для длинных/средних волн (7.5)",
-      "expression": "x = π · d / (λ · √(θ/(60·λ·δ)))",
+      "expression": "x = (π · d) / (600 · λ² · δ)",
       "imagePath": "/src/assets/formula 7.5.png",
       "variables": [
         { "symbol": "x", "description": "Численное значение", "unit": "—" },
         { "symbol": "d", "description": "Расстояние", "unit": "м" },
         { "symbol": "λ", "description": "Длина волны", "unit": "м" },
-        { "symbol": "θ", "description": "Относительная диэлектрическая проницаемость", "unit": "—" },
         { "symbol": "δ", "description": "Радиопроводимость почвы", "unit": "См/м" }
       ],
       "explanation": "Формула для расчёта параметра x при распространении длинных и средних волн."
@@ -117,7 +116,7 @@
     {
       "id": "f7-6",
       "label": "Параметр x для коротких волн (7.6)",
-      "expression": "x = (π · d) / (λ · (θ² + (60·λ·δ)²)^(1/4))",
+      "expression": "x = (π · d) / (λ · √(θ² + (60 · λ · δ)²))",
       "imagePath": "/src/assets/formula 7.6.png",
       "variables": [
         { "symbol": "x", "description": "Численное значение", "unit": "—" },

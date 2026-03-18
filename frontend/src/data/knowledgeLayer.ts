@@ -407,32 +407,89 @@ export function buildPracticeMethods(lessonId: LessonId): PracticeMethod[] {
       return [
         {
           id: 'shield-calc',
-          title: 'Расчёт толщины экрана и длины волновода',
-          description: 'H → E → ППЭ → L → α → M → A₁ → l',
+          title: 'Расчёт параметров защиты от ЭМИ',
+          description: 'H → λ → ППЭδ → ППЭδдоп → L → ω → μa → M → α → l',
           params: [
-            { key: 'W', label: 'Витки W', unit: '', defaultValue: 12 },
+            { key: 'w', label: 'Витки w', unit: '', defaultValue: 12 },
             { key: 'I', label: 'Ток I', unit: 'А', defaultValue: 350 },
+            { key: 'r', label: 'Радиус катушки r', unit: 'м', defaultValue: 0.25 },
+            { key: 'R', label: 'Расстояние R', unit: 'м', defaultValue: 3 },
+            { key: 'betaM', label: 'βm', unit: '', defaultValue: 1 },
             { key: 'f', label: 'Частота f', unit: 'Гц', defaultValue: 3e8 },
             { key: 'T', label: 'Время T', unit: 'ч', defaultValue: 4 },
-            { key: 'R', label: 'Расстояние R', unit: 'м', defaultValue: 3 },
-            { key: 'muA', label: 'μa', unit: 'Гн/м', defaultValue: 2.5e-4 },
+            { key: 'N', label: 'N', unit: 'Вт·ч/м²', defaultValue: 2 },
+            { key: 'mu', label: 'μ', unit: '', defaultValue: 200 },
             { key: 'gamma', label: 'γ', unit: '1/(Ом·м)', defaultValue: 1e7 },
             { key: 'D', label: 'Диаметр D', unit: 'м', defaultValue: 0.01 },
             { key: 'eps', label: 'ε', unit: '', defaultValue: 7 },
           ],
           steps: [
-            { label: 'H', formula: 'H = W·I/R', compute: (p) => p.W * p.I / p.R, resultKey: 'H', resultUnit: 'А/м' },
-            { label: 'E', formula: 'E = H·377', compute: (p) => p.H * 377, resultKey: 'E', resultUnit: 'В/м' },
-            { label: 'ППЭ', formula: 'ППЭ = E·H', compute: (p) => p.E * p.H, resultKey: 'PPE', resultUnit: 'Вт/м²' },
-            { label: 'ППЭ_доп', formula: '2/T', compute: (p) => 2 / p.T, resultKey: 'PPEmax', resultUnit: 'Вт/м²' },
-            { label: 'L', formula: '10·lg(ППЭ/ППЭ_доп)', compute: (p) => 10 * Math.log10(Math.max(1, p.PPE / p.PPEmax)), resultKey: 'L', resultUnit: 'дБ' },
-            { label: 'α', formula: '√(π·f·μa·γ)', compute: (p) => Math.sqrt(Math.PI * p.f * p.muA * p.gamma), resultKey: 'alpha', resultUnit: '1/м' },
-            { label: 'M (толщина)', formula: 'L/(8,68·α)', compute: (p) => p.L / (8.68 * p.alpha), resultKey: 'M', resultUnit: 'м' },
-            { label: 'A₁ (волновод)', formula: '(32/D)·√ε', compute: (p) => (32 / p.D) * Math.sqrt(p.eps), resultKey: 'A1', resultUnit: 'дБ/м' },
-            { label: 'l (длина)', formula: 'L/A₁', compute: (p) => p.L / p.A1, resultKey: 'len', resultUnit: 'м' },
+            {
+              label: 'H',
+              formula: 'H = (w·I·r²·βm) / (4·R³)',
+              compute: (p) => (p.w * p.I * p.r * p.r * p.betaM) / (4 * Math.pow(Math.max(1e-6, p.R), 3)),
+              resultKey: 'H',
+              resultUnit: 'А/м',
+            },
+            { label: 'λ', formula: 'λ = c / f', compute: (p) => 299792458 / Math.max(1e-9, p.f), resultKey: 'lambda', resultUnit: 'м' },
+            {
+              label: 'ППЭδ',
+              formula: 'ППЭδ = 377·H²/2',
+              compute: (p) => (377 * p.H * p.H) / 2,
+              resultKey: 'PPEd',
+              resultUnit: 'Вт/м²',
+            },
+            {
+              label: 'ППЭδдоп',
+              formula: 'ППЭδдоп = N / T',
+              compute: (p) => p.N / Math.max(1e-9, p.T),
+              resultKey: 'PPEdMax',
+              resultUnit: 'Вт/м²',
+            },
+            {
+              label: 'L',
+              formula: 'L = ППЭδ / ППЭδдоп',
+              compute: (p) => p.PPEd / Math.max(1e-12, p.PPEdMax),
+              resultKey: 'L',
+              resultUnit: '',
+            },
+            { label: 'ω', formula: 'ω = 2πf', compute: (p) => 2 * Math.PI * p.f, resultKey: 'omega', resultUnit: '1/с' },
+            {
+              label: 'μa',
+              formula: 'μa = μ0·μ',
+              compute: (p) => (4 * Math.PI * 1e-7) * p.mu,
+              resultKey: 'muA',
+              resultUnit: 'Гн/м',
+            },
+            {
+              label: 'M',
+              formula: 'M = ln(L) / (2·√(ω·μa·γ/2))',
+              compute: (p) => {
+                const denom = 2 * Math.sqrt((p.omega * p.muA * p.gamma) / 2);
+                return Math.log(Math.max(1, p.L)) / Math.max(1e-12, denom);
+              },
+              resultKey: 'M',
+              resultUnit: 'м',
+            },
+            {
+              label: 'α',
+              formula: 'α = 32 / (D·√ε)',
+              compute: (p) => 32 / (Math.max(1e-12, p.D) * Math.sqrt(Math.max(1e-12, p.eps))),
+              resultKey: 'alpha',
+              resultUnit: 'дБ/м',
+            },
+            {
+              label: 'l',
+              formula: 'l = (10·lg(L)) / α',
+              compute: (p) => (10 * Math.log10(Math.max(1, p.L))) / Math.max(1e-12, p.alpha),
+              resultKey: 'len',
+              resultUnit: 'м',
+            },
           ],
           conclusionFn: (r) =>
-            `Толщина экрана M = ${(r.M * 1000).toFixed(3)} мм; длина волновода l = ${(r.len * 1000).toFixed(1)} мм.`,
+            `H = ${r.H.toFixed(4)} А/м; ППЭδ = ${r.PPEd.toFixed(6)} Вт/м²; L = ${r.L.toFixed(3)}; M = ${(r.M * 1000).toFixed(
+              3,
+            )} мм; l = ${(r.len * 1000).toFixed(1)} мм.`,
         },
       ];
 
@@ -453,16 +510,15 @@ export function buildPracticeMethods(lessonId: LessonId): PracticeMethod[] {
           steps: [
             { label: 'f (частота)', formula: 'f = c/λ', compute: (p) => 299792458 / p.lambda, resultKey: 'freq', resultUnit: 'Гц' },
             {
-              label: 'x', formula: 'π·d / (λ·√(θ²+(18000δ/f)²))',
+              label: 'x', formula: 'π·d / (λ·√(θ²+(60·λ·δ)²))',
               compute: (p) => {
-                const f = 299792458 / p.lambda;
-                const term = Math.sqrt(p.theta ** 2 + (18000 * p.sigma / f) ** 2);
+                const term = Math.sqrt(p.theta ** 2 + (60 * p.lambda * p.sigma) ** 2);
                 return (Math.PI * p.d) / (p.lambda * term);
               },
               resultKey: 'x', resultUnit: '',
             },
-            { label: 'F', formula: '(2+0.3x)/(2+x+0.6x²)', compute: (p) => p.x === 0 ? 1 : (2 + 0.3 * p.x) / (2 + p.x + 0.6 * p.x ** 2), resultKey: 'F', resultUnit: '' },
-            { label: 'E', formula: '245·√(P·Ga)·F/d', compute: (p) => 245 * Math.sqrt(p.P * p.Ga) * p.F / p.d, resultKey: 'E', resultUnit: 'В/м' },
+            { label: 'F', formula: '1.41·(2+0.3x)/(2+x+0.6x²)', compute: (p) => 1.41 * (p.x === 0 ? 1 : (2 + 0.3 * p.x) / (2 + p.x + 0.6 * p.x ** 2)), resultKey: 'F', resultUnit: '' },
+            { label: 'E', formula: '7.750·√(P·Ga)·F/d', compute: (p) => 7.75 * Math.sqrt(p.P * p.Ga) * p.F / p.d, resultKey: 'E', resultUnit: 'В/м' },
           ],
           conclusionFn: (r) => `E = ${r.E.toFixed(4)} В/м на расстоянии d.`,
         },
@@ -484,7 +540,7 @@ export function buildPracticeMethods(lessonId: LessonId): PracticeMethod[] {
           steps: [
             { label: 'R', formula: '√(H²+r²)', compute: (p) => Math.sqrt(p.Hant ** 2 + p.r ** 2), resultKey: 'R', resultUnit: 'м' },
             { label: 'Δ', formula: 'arctan(H/r)', compute: (p) => Math.atan(p.Hant / p.r), resultKey: 'delta', resultUnit: 'рад' },
-            { label: 'F(Δ)', formula: 'cos(Δ)', compute: (p) => Math.cos(p.delta), resultKey: 'Fd', resultUnit: '' },
+            { label: 'F(Δ)', formula: '1.41·(2+0.3r)/(2+r+0.6r²)', compute: (p) => 1.41 * (2 + 0.3 * p.r) / (2 + p.r + 0.6 * p.r ** 2), resultKey: 'Fd', resultUnit: '' },
             { label: 'E', formula: 'K·√(30PG)·F(Δ)/R', compute: (p) => p.K * Math.sqrt(30 * p.P * p.G) * p.Fd / p.R, resultKey: 'E', resultUnit: 'В/м' },
           ],
           conclusionFn: (r) => `E = ${r.E.toFixed(3)} В/м.`,
@@ -505,8 +561,7 @@ export function buildPracticeMethods(lessonId: LessonId): PracticeMethod[] {
             { key: 'U', label: 'U_пр', unit: 'В', defaultValue: 220 },
           ],
           steps: [
-            { label: 'Xc', formula: '1/(2πfC)', compute: (p) => 1 / (2 * Math.PI * p.f * p.C * 1e-9), resultKey: 'Xc', resultUnit: 'Ом' },
-            { label: 'Zн', formula: '√(Rн²+Xc²)', compute: (p) => Math.sqrt(p.Rn ** 2 + p.Xc ** 2), resultKey: 'Zn', resultUnit: 'Ом' },
+            { label: 'Zн', formula: 'Rн/√(1+(2πfCRн)²)', compute: (p) => p.Rn / Math.sqrt(1 + (2 * Math.PI * p.f * (p.C * 1e-9) * p.Rn) ** 2), resultKey: 'Zn', resultUnit: 'Ом' },
             { label: 'Z', formula: '2Zн+Rв', compute: (p) => 2 * p.Zn + p.Rv, resultKey: 'Z', resultUnit: 'Ом' },
             { label: 'I (мА)', formula: 'U/Z·1000', compute: (p) => (p.U / p.Z) * 1000, resultKey: 'ImA', resultUnit: 'мА' },
           ],

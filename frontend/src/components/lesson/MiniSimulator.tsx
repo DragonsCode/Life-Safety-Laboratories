@@ -53,7 +53,7 @@ import {
 import { classifyEmZone, powerFluxDensityWm2, wavelengthM } from '../../formulas/emi';
 import {
   attenuationCoefficient,
-  requiredAttenuationDb,
+  attenuationRatioL,
   shieldThicknessM,
   waveguideAttenuationPerM,
   waveguideLengthM,
@@ -385,7 +385,8 @@ export default function MiniSimulator({ type }: SimulatorProps) {
         const gamma = Math.max(100, c * 1e6);
         const Ldb = Math.max(1, d);
         const alpha = attenuationCoefficient(freq, muA, gamma);
-        const thickness = shieldThicknessM(Ldb, alpha);
+        // Legacy demo: M = L / (8.68 · α)
+        const thickness = Ldb / (8.68 * Math.max(1e-12, alpha));
         return {
           controls: (
             <Stack spacing={1.2}>
@@ -410,7 +411,8 @@ export default function MiniSimulator({ type }: SimulatorProps) {
         const eps = Math.max(1, b);
         const Ldb = Math.max(1, c);
         const A1 = waveguideAttenuationPerM(diameter, eps);
-        const wgLen = waveguideLengthM(Ldb, A1);
+        // Legacy demo: l = L / A1
+        const wgLen = Ldb / Math.max(1e-12, A1);
         return {
           controls: (
             <Stack spacing={1.2}>
@@ -431,7 +433,7 @@ export default function MiniSimulator({ type }: SimulatorProps) {
       case 'emi-field-attenuation': {
         const ppe = Math.max(0.01, a);
         const ppeMax = Math.max(0.01, b);
-        const Ldb = requiredAttenuationDb(ppe, ppeMax);
+        const L = attenuationRatioL(ppe, ppeMax);
         return {
           controls: (
             <Stack spacing={1.2}>
@@ -442,7 +444,7 @@ export default function MiniSimulator({ type }: SimulatorProps) {
             </Stack>
           ),
           values: [
-            <ValueLine key="v1" label="L" value={`${Ldb.toFixed(2)} дБ`} />,
+            <ValueLine key="v1" label="L" value={L.toFixed(3)} />,
             <ValueLine key="v2" label="Оценка" value={ppe <= ppeMax ? 'Допустимо' : 'Превышение — нужен экран'} />,
           ],
         };
@@ -608,7 +610,7 @@ export default function MiniSimulator({ type }: SimulatorProps) {
         const C_nF = Math.max(1, b);
         const Rv = Math.max(100, c);
         const freq = Math.max(1, d);
-        const Zn = skinImpedance(Rn, C_nF * 1e-9, freq);
+        const Zn = skinImpedance(Rn, freq, C_nF * 1e-9);
         const Zt = totalBodyImpedance(Zn, Rv);
         return {
           controls: (
@@ -631,7 +633,7 @@ export default function MiniSimulator({ type }: SimulatorProps) {
       }
       case 'electric-frequency-effect': {
         const freq = Math.max(1, a);
-        const Zn = skinImpedance(5000, 20e-9, freq);
+        const Zn = skinImpedance(5000, freq, 20e-9);
         const Zt = totalBodyImpedance(Zn, 500);
         return {
           controls: (

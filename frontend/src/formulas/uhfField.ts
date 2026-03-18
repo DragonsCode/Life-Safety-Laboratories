@@ -44,6 +44,18 @@ export function normalizedPatternFactor(deltaRad: number): number {
 }
 
 /**
+ * F(Δ) — множитель ослабления поля. (формула 8.5 из ТЗ пользователя)
+ * F(Δ) = 1.41 · (2 + 0.3r) / (2 + r + 0.6r²)
+ *
+ * В формуле используется r (как дано в ТЗ). Здесь r — горизонтальная дальность до точки, м.
+ */
+export function normalizedPatternFactorFromR(groundDistanceM: number): number {
+  assertFiniteNonNegative(groundDistanceM, 'groundDistanceM');
+  const r = groundDistanceM;
+  return 1.41 * (2 + 0.3 * r) / (2 + r + 0.6 * r * r);
+}
+
+/**
  * Напряжённость поля УВЧ, В/м. (формула 8.4)
  * E = K · √(P·G) · F(Δ) / R
  * где K = 7.746 (= √60) для формулы E = √(30PG)/R с K-корректором

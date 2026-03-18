@@ -27,59 +27,62 @@ export function isWaveZone(distanceM: number, antennaSizeM: number, wavelengthM:
 }
 
 /**
- * x для ДВ и СВ (длинных/средних волн). (формула 7.5)
- * x = π·d / (λ · √(θ² + (18000·δ/f)²))
- * Условие (7.4): 18000·δ/f ≫ θ  → можно упрощать
+ * Условие параметра (7.4)
+ * 60λ ≫ 0  (как в методичке/ТЗ; формально всегда выполняется при λ>0)
  */
-export function xParameterDVSV(
-  distanceM: number,
-  wavelengthM: number,
-  theta: number,
-  sigma: number,
-): number {
-  assertFinitePositive(distanceM, 'distanceM');
+export function isParameterConditionTrue(wavelengthM: number): boolean {
   assertFinitePositive(wavelengthM, 'wavelengthM');
-  assertFinitePositive(theta, 'theta');
-  assertFiniteNonNegative(sigma, 'sigma');
-  const f = 299_792_458 / wavelengthM;
-  const term = Math.sqrt(theta * theta + (18000 * sigma / f) ** 2);
-  return (Math.PI * distanceM) / (wavelengthM * term);
+  return 60 * wavelengthM > 0;
 }
 
 /**
- * x для КВ (коротких волн). (формула 7.6)
- * x = π·d·δ / (f · (θ² + (18000·δ/f)²))
+ * x (вариант 1). (формула 7.5)
+ * x = (π · d) / (600 · λ² · δ)
  */
-export function xParameterKV(
+export function xParameterVariant1(
+  distanceM: number,
+  wavelengthM: number,
+  delta: number,
+): number {
+  assertFinitePositive(distanceM, 'distanceM');
+  assertFinitePositive(wavelengthM, 'wavelengthM');
+  assertFinitePositive(delta, 'delta');
+  return (Math.PI * distanceM) / (600 * wavelengthM * wavelengthM * delta);
+}
+
+/**
+ * x (полная формула). (формула 7.6)
+ * x = (π · d) / (λ · √(θ² + (60 · λ · δ)²))
+ */
+export function xParameterFull(
   distanceM: number,
   wavelengthM: number,
   theta: number,
-  sigma: number,
+  delta: number,
 ): number {
   assertFinitePositive(distanceM, 'distanceM');
   assertFinitePositive(wavelengthM, 'wavelengthM');
   assertFinitePositive(theta, 'theta');
-  assertFinitePositive(sigma, 'sigma');
-  const f = 299_792_458 / wavelengthM;
-  const denominator = f * (theta * theta + (18000 * sigma / f) ** 2);
-  return (Math.PI * distanceM * sigma) / denominator;
+  assertFinitePositive(delta, 'delta');
+  const denom = wavelengthM * Math.sqrt(theta * theta + Math.pow(60 * wavelengthM * delta, 2));
+  return (Math.PI * distanceM) / denom;
 }
 
 /**
  * Множитель ослабления F(x). (формула 7.3)
- * F = 2 + 0.3·x / (2 + x + 0.6·x²)
+ * F = 1.41 · (2 + 0.3·x) / (2 + x + 0.6·x²)
  * Approximation valid for x > 0.
  */
 export function attenuationFactorF(x: number): number {
   assertFiniteNonNegative(x, 'x');
-  if (x === 0) return 1;
-  return (2 + 0.3 * x) / (2 + x + 0.6 * x * x);
+  const base = x === 0 ? 1 : (2 + 0.3 * x) / (2 + x + 0.6 * x * x);
+  return 1.41 * base;
 }
 
 /**
  * Напряжённость поля по Шулейкину–Ван-дер-Полю, В/м. (формула 7.2)
- * E = (245·√(P·Ga)·F) / d
- * P in кВт → √(P_Вт) ... Стандартная формула: E = 245·√(P_кВт·Ga)·F / d
+ * E = 7.750 · √(P · Ga) · F / d
+ * P in кВт
  */
 export function fieldStrengthShuleikin(
   powerKW: number,
@@ -91,7 +94,7 @@ export function fieldStrengthShuleikin(
   assertFinitePositive(gainAntenna, 'gainAntenna');
   assertFinitePositive(distanceM, 'distanceM');
   assertFiniteNonNegative(fFactor, 'fFactor');
-  return (245 * Math.sqrt(powerKW * gainAntenna) * fFactor) / distanceM;
+  return (7.75 * Math.sqrt(powerKW * gainAntenna) * fFactor) / distanceM;
 }
 
 /**
@@ -115,11 +118,22 @@ export function xParameter(
   distanceM: number,
   wavelengthM: number,
   theta: number,
-  sigma: number,
+  delta: number,
 ): number {
-  const band = classifyWaveBand(wavelengthM);
-  if (band === 'DV' || band === 'SV') {
-    return xParameterDVSV(distanceM, wavelengthM, theta, sigma);
-  }
-  return xParameterKV(distanceM, wavelengthM, theta, sigma);
+  // By request: expose both formulas; default to "full" one as it includes θ.
+  return xParameterFull(distanceM, wavelengthM, theta, delta);
+}
+
+/* ─────────────────────────────
+ * Legacy exports (backward compatibility)
+ * ───────────────────────────── */
+
+export function xParameterDVSV(distanceM: number, wavelengthM: number, theta: number, sigma: number): number {
+  // Previously used a different equation; keep compatibility by routing to full form.
+  return xParameterFull(distanceM, wavelengthM, theta, sigma);
+}
+
+export function xParameterKV(distanceM: number, wavelengthM: number, theta: number, sigma: number): number {
+  // Previously used a different equation; keep compatibility by routing to full form.
+  return xParameterFull(distanceM, wavelengthM, theta, sigma);
 }
