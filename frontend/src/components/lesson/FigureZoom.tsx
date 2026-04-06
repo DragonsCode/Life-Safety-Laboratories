@@ -1,5 +1,6 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Dialog,
   DialogContent,
@@ -10,21 +11,39 @@ import {
 } from '@mui/material';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import CloseIcon from '@mui/icons-material/Close';
-import { resolveAssetPath } from '../../data/assetResolver';
+import { resolveAssetPathTryList } from '../../data/assetResolver';
 
 interface FigureZoomProps {
   src: string;
   alt?: string;
   caption?: string;
+  /** Уменьшить высоту превью на узких экранах / в «компактном» режиме теории */
+  compact?: boolean;
 }
 
-function FigureZoom({ src, alt, caption }: FigureZoomProps) {
+function FigureZoom({ src, alt, caption, compact }: FigureZoomProps) {
   const [open, setOpen] = useState(false);
-  const resolvedSrc = useMemo(() => resolveAssetPath(src), [src]);
+  const tryList = useMemo(() => resolveAssetPathTryList(src), [src]);
+  const [tryIdx, setTryIdx] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const activeSrc = tryList[tryIdx] ?? '';
 
-  if (!resolvedSrc) {
+  useEffect(() => {
+    setTryIdx(0);
+    setFailed(false);
+  }, [src]);
+
+  if (!tryList.length || !activeSrc) {
     return null;
   }
+
+  const onImgError = () => {
+    if (tryIdx < tryList.length - 1) {
+      setTryIdx((i) => i + 1);
+    } else {
+      setFailed(true);
+    }
+  };
 
   return (
     <>
@@ -33,40 +52,52 @@ function FigureZoom({ src, alt, caption }: FigureZoomProps) {
         sx={{
           p: 1,
           position: 'relative',
-          cursor: 'zoom-in',
-          '&:hover .zoom-icon': { opacity: 1 },
+          cursor: failed ? 'default' : 'zoom-in',
+          ...(!failed ? { '&:hover .zoom-icon': { opacity: 1 } } : {}),
         }}
-        onClick={() => setOpen(true)}
+        onClick={() => !failed && setOpen(true)}
       >
-        <Box
-          component="img"
-          src={resolvedSrc}
-          alt={alt ?? caption ?? 'Рисунок'}
-          sx={{
-            width: '100%',
-            borderRadius: 1,
-            border: '1px solid',
-            borderColor: 'divider',
-          }}
-          onError={(event: React.SyntheticEvent<HTMLImageElement>) => {
-            event.currentTarget.style.display = 'none';
-          }}
-        />
-        <Box
-          className="zoom-icon"
-          sx={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            bgcolor: 'rgba(0,0,0,0.5)',
-            borderRadius: '50%',
-            p: 0.5,
-            opacity: 0,
-            transition: 'opacity 0.2s',
-          }}
-        >
-          <ZoomInIcon sx={{ color: '#fff', fontSize: 20 }} />
-        </Box>
+        {failed ? (
+          <Alert severity="warning" sx={{ my: 0.5 }} onClick={(e) => e.stopPropagation()}>
+            Не удалось загрузить файл рисунка. Проверьте, что в{' '}
+            <Typography component="span" variant="body2" sx={{ fontFamily: 'monospace' }}>
+              public/assets/manual-imported/
+            </Typography>{' '}
+            есть PNG с точным именем, как в методичке (кириллица, пробелы, «ё», запятая в 0,4 и т.д.).
+          </Alert>
+        ) : (
+          <Box
+            component="img"
+            src={activeSrc}
+            alt={alt ?? caption ?? 'Рисунок'}
+            sx={{
+              width: '100%',
+              maxHeight: compact ? 240 : 560,
+              objectFit: 'contain',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+            }}
+            onError={onImgError}
+          />
+        )}
+        {!failed && (
+          <Box
+            className="zoom-icon"
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              bgcolor: 'rgba(0,0,0,0.5)',
+              borderRadius: '50%',
+              p: 0.5,
+              opacity: 0,
+              transition: 'opacity 0.2s',
+            }}
+          >
+            <ZoomInIcon sx={{ color: '#fff', fontSize: 20 }} />
+          </Box>
+        )}
         {caption && (
           <Typography variant="caption" color="text.secondary" sx={{ mt: 0.8, display: 'block' }}>
             {caption}
@@ -74,7 +105,7 @@ function FigureZoom({ src, alt, caption }: FigureZoomProps) {
         )}
       </Paper>
 
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="lg" fullWidth>
+      <Dialog open={open && !failed} onClose={() => setOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {caption ?? 'Рисунок'}
           <IconButton onClick={() => setOpen(false)} size="small">
@@ -84,9 +115,10 @@ function FigureZoom({ src, alt, caption }: FigureZoomProps) {
         <DialogContent>
           <Box
             component="img"
-            src={resolvedSrc}
+            src={activeSrc}
             alt={alt ?? caption ?? 'Рисунок'}
             sx={{ width: '100%', maxHeight: '80vh', objectFit: 'contain' }}
+            onError={onImgError}
           />
         </DialogContent>
       </Dialog>

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, memo } from 'react';
+import { useMemo, useState, memo } from 'react';
 import {
   Alert,
   Box,
@@ -120,6 +120,7 @@ function FormulaBlock({
           fontSize: '1.15rem',
           letterSpacing: 0.5,
           my: 1,
+          overflowX: 'auto',
           '& sub': { fontSize: '0.65em', verticalAlign: 'sub', lineHeight: 0 },
           '& sup': { fontSize: '0.65em', verticalAlign: 'super', lineHeight: 0 },
         }}

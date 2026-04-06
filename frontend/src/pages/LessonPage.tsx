@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -16,7 +16,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getLessonById } from '../data/lessons';
-import { getKnowledgeLayer } from '../data/knowledgeLayer';
+import { getKnowledgeLayer, theoryBlocksWithGoal } from '../data/knowledgeLayer';
 import TheorySection from '../components/lesson/TheorySection';
 import LabSection from '../components/lesson/LabSection';
 import TestSection from '../components/lesson/TestSection';
@@ -37,17 +37,32 @@ export default function LessonPage() {
   const [search, setSearch] = useState('');
   const knowledgeLayer = lesson ? getKnowledgeLayer(lesson.id as LessonId) : undefined;
 
+  const goHome = () => {
+    // Primary SPA navigation
+    navigate('/', { replace: true });
+
+    // Fallback: some WebViews (or misconfigured hosting) can update the URL
+    // without React Router reliably re-rendering. If we're at "/" but still
+    // not seeing the home screen, a one-time hard reload fixes it.
+    window.setTimeout(() => {
+      const isAtHomePath = window.location.pathname === '/';
+      const homeMounted = Boolean(document.querySelector('[data-testid="home-page"]'));
+      if (isAtHomePath && !homeMounted) {
+        window.location.reload();
+      }
+    }, 50);
+  };
+
   const query = search.trim().toLowerCase();
-  const theoryBlocks = useMemo(
-    () =>
-      knowledgeLayer?.theory.map((block) => ({
+  const theoryBlocks = useMemo(() => {
+      if (!lesson || !knowledgeLayer) return [];
+      return theoryBlocksWithGoal(knowledgeLayer, lesson.id as LessonId).map((block) => ({
         id: block.id,
         title: block.heading,
         keywords: block.keywords,
         text: block.text,
-      })) ?? [],
-    [knowledgeLayer],
-  );
+      }));
+    }, [knowledgeLayer, lesson]);
   const filteredTheoryBlocks = theoryBlocks.filter((block) => {
     if (!query) return true;
     const inTitle = block.title.toLowerCase().includes(query);
@@ -76,7 +91,7 @@ export default function LessonPage() {
     return (
       <Box>
         <Typography variant="h5">Занятие не найдено</Typography>
-        <Button sx={{ mt: 2 }} onClick={() => navigate('/')}>
+        <Button sx={{ mt: 2 }} onClick={goHome}>
           К списку занятий
         </Button>
       </Box>
@@ -84,17 +99,19 @@ export default function LessonPage() {
   }
 
   return (
-    <Box>
-      <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/')} sx={{ mb: 1 }}>
+    <Box data-testid="lesson-page">
+      <Button startIcon={<ArrowBackIcon />} onClick={goHome} sx={{ mb: 1 }}>
         На главную
       </Button>
 
       <Typography variant="h4" sx={{ mb: 1 }}>
         {lesson.title}
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-        {lesson.goal}
-      </Typography>
+      {!(lesson.id >= 1 && lesson.id <= 15) && (
+        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+          {lesson.goal}
+        </Typography>
+      )}
 
       <Tabs
         value={activeSection}
@@ -102,7 +119,7 @@ export default function LessonPage() {
         sx={{ mb: 2 }}
       >
         <Tab value="theory" label="Теория" />
-        <Tab value="lab" label="Лабораторная" />
+        <Tab value="lab" label="Практика" />
         <Tab value="test" label="Тест" />
       </Tabs>
 

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Button,
@@ -15,7 +15,13 @@ import FormulaBlock from './FormulaBlock';
 import FigureZoom from './FigureZoom';
 import TermHighlight from './TermHighlight';
 import MiniSimulator from './MiniSimulator';
-import { getKnowledgeLayer, toFormulaBlockProps, buildGlossary } from '../../data/knowledgeLayer';
+import {
+  getKnowledgeLayer,
+  toFormulaBlockProps,
+  buildGlossary,
+  shouldInlineGoalInTheory,
+  theoryBlocksWithGoal,
+} from '../../data/knowledgeLayer';
 import { useProgress } from '../../context/ProgressContext';
 import { getLessonById } from '../../data/lessons';
 
@@ -29,11 +35,83 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
   const lesson = lessonId ? getLessonById(lessonId) : undefined;
   const theoryModules = lesson?.theoryModules ?? [];
   const glossary = useMemo(() => (knowledgeLayer ? buildGlossary(knowledgeLayer) : {}), [knowledgeLayer]);
-  const [detailedMode, setDetailedMode] = useState(true);
+  /** Раньше «краткий режим» полностью скрывал рисунки — формулы оставались; из‑за этого казалось, что «рисунки не отображаются». */
+  const [diagramsCompact, setDiagramsCompact] = useState(false);
 
   /* ─── Build interleaved content list ─── */
   const interleavedContent = useMemo(() => {
-    if (!knowledgeLayer) return [];
+    if (!knowledgeLayer || !lessonId) return [];
+
+    /* Явный порядок из contentFlow (например, занятие №11 — как в txt методички). */
+    if (knowledgeLayer.contentFlow && knowledgeLayer.contentFlow.length > 0) {
+      const flowItems: Array<{ type: 'theory' | 'formula' | 'figure' | 'scene'; data: unknown }> = [];
+      if (shouldInlineGoalInTheory(lessonId) && knowledgeLayer.goal?.trim()) {
+        flowItems.push({
+          type: 'theory',
+          data: {
+            id: `${knowledgeLayer.id}-goal`,
+            heading: 'Цель работы',
+            text: knowledgeLayer.goal.trim(),
+            keywords: ['цель работы'],
+          },
+        });
+      }
+      const theoryById = new Map(knowledgeLayer.theory.map((t) => [t.id, t]));
+      const formulaById = new Map(knowledgeLayer.formulas.map((f) => [f.id, f]));
+      const figureById = new Map(knowledgeLayer.figures.map((g) => [g.id, g]));
+      for (const flow of knowledgeLayer.contentFlow) {
+        if (flow.step === 'theory') {
+          const b = theoryById.get(flow.blockId);
+          if (b) flowItems.push({ type: 'theory', data: b });
+        } else if (flow.step === 'formula') {
+          const f = formulaById.get(flow.id);
+          if (f) flowItems.push({ type: 'formula', data: f });
+        } else {
+          const fig = figureById.get(flow.id);
+          if (fig) flowItems.push({ type: 'figure', data: fig });
+        }
+      }
+
+      /* contentFlow раньше полностью отбрасывал 3D-сцены из theoryModules — добавляем с тем же правилом, что и без flow */
+      const theoriesInFlow = knowledgeLayer.contentFlow
+        .filter((s): s is { step: 'theory'; blockId: string } => s.step === 'theory')
+        .map((s) => s.blockId);
+      const moduleByTheoryId = new Map<string, TheoryModule>();
+      const moduleCount = theoryModules.length;
+      const theoryCount = theoriesInFlow.length;
+      if (moduleCount > 0 && theoryCount > 0) {
+        const ratio = moduleCount / theoryCount;
+        theoriesInFlow.forEach((blockId, tIdx) => {
+          const moduleIdx = Math.min(Math.floor(tIdx * ratio), moduleCount - 1);
+          moduleByTheoryId.set(blockId, theoryModules[moduleIdx]);
+        });
+      }
+
+      const merged: typeof flowItems = [];
+      const usedSimulators = new Set<string>();
+      for (const item of flowItems) {
+        merged.push(item);
+        if (item.type === 'theory') {
+          const block = item.data as { id: string };
+          const mod = moduleByTheoryId.get(block.id);
+          if (mod && !usedSimulators.has(mod.simulator)) {
+            merged.push({ type: 'scene', data: mod });
+            usedSimulators.add(mod.simulator);
+          }
+        }
+      }
+      theoryModules.forEach((mod) => {
+        if (!usedSimulators.has(mod.simulator)) {
+          merged.push({ type: 'scene', data: mod });
+          usedSimulators.add(mod.simulator);
+        }
+      });
+      return merged;
+    }
+
+    const theoryBlocks = theoryBlocksWithGoal(knowledgeLayer, lessonId);
+    const goalShift =
+      shouldInlineGoalInTheory(lessonId) && knowledgeLayer.goal?.trim() ? 1 : 0;
 
     const items: Array<{
       type: 'theory' | 'formula' | 'figure' | 'scene';
@@ -60,7 +138,7 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
     );
 
     /* ── Assign each formula to the LAST (most specific) block that references it ── */
-    const formulaOwner = new Map<string, number>(); // formulaNumber → blockIndex
+    const formulaOwner = new Map<string, number>(); // formulaNumber → blockIndex (в исходном theory без цели)
     blockFormulaRefs.forEach((refs, blockIndex) => {
       refs.forEach((num) => {
         // Later blocks override earlier ones (overview block loses to specific method blocks)
@@ -76,13 +154,14 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
       if (!match || !assignedNumbers.has(match[1])) unassigned.push(f);
     });
 
-    /* ── Build a formulaNumber→formula map indexed by block ── */
+    /* ── Build a formulaNumber→formula map indexed by block (индекс с учётом блока «Цель») ── */
     const formulasForBlock = new Map<number, typeof formulas>();
     formulaOwner.forEach((blockIdx, num) => {
       const f = formulaByNumber.get(num);
       if (!f) return;
-      if (!formulasForBlock.has(blockIdx)) formulasForBlock.set(blockIdx, []);
-      formulasForBlock.get(blockIdx)!.push(f);
+      const displayIdx = blockIdx + goalShift;
+      if (!formulasForBlock.has(displayIdx)) formulasForBlock.set(displayIdx, []);
+      formulasForBlock.get(displayIdx)!.push(f);
     });
     // Sort each block's formulas by their label number
     formulasForBlock.forEach((arr) => {
@@ -95,20 +174,21 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
 
     /* ── Distribute unassigned formulas evenly across non-first blocks ── */
     if (unassigned.length > 0 && knowledgeLayer.theory.length > 1) {
-      const startBlock = 1; // skip overview block
+      const startBlock = 1; // skip overview block (в исходных индексах theory)
       const blocks = knowledgeLayer.theory.length - startBlock;
       const perBlock = Math.ceil(unassigned.length / blocks);
       let uIdx = 0;
       for (let bi = startBlock; bi < knowledgeLayer.theory.length && uIdx < unassigned.length; bi++) {
-        if (!formulasForBlock.has(bi)) formulasForBlock.set(bi, []);
+        const displayIdx = bi + goalShift;
+        if (!formulasForBlock.has(displayIdx)) formulasForBlock.set(displayIdx, []);
         for (let j = 0; j < perBlock && uIdx < unassigned.length; j++, uIdx++) {
-          formulasForBlock.get(bi)!.push(unassigned[uIdx]);
+          formulasForBlock.get(displayIdx)!.push(unassigned[uIdx]);
         }
       }
     } else if (unassigned.length > 0) {
-      // Single theory block or no blocks — assign all formulas to the first/only block
-      if (!formulasForBlock.has(0)) formulasForBlock.set(0, []);
-      unassigned.forEach((f) => formulasForBlock.get(0)!.push(f));
+      const displayIdx = goalShift; // первый содержательный блок теории
+      if (!formulasForBlock.has(displayIdx)) formulasForBlock.set(displayIdx, []);
+      unassigned.forEach((f) => formulasForBlock.get(displayIdx)!.push(f));
     }
 
     /* ── Build simulator lookup: distribute theoryModules across blocks ── */
@@ -117,16 +197,16 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
     const moduleCount = theoryModules.length;
     if (moduleCount > 0 && theoryBlockCount > 0) {
       const ratio = moduleCount / theoryBlockCount;
-      for (let blockIdx = 0; blockIdx < theoryBlockCount; blockIdx++) {
-        const moduleIdx = Math.min(Math.floor(blockIdx * ratio), moduleCount - 1);
-        if (!moduleByIndex.has(blockIdx)) {
-          moduleByIndex.set(blockIdx, theoryModules[moduleIdx]);
-        }
+      for (let blockIdx = 0; blockIdx < theoryBlocks.length; blockIdx++) {
+        if (goalShift && blockIdx === 0) continue;
+        const logicalIdx = blockIdx - goalShift;
+        const moduleIdx = Math.min(Math.floor(logicalIdx * ratio), moduleCount - 1);
+        moduleByIndex.set(blockIdx, theoryModules[moduleIdx]);
       }
     }
 
     /* ── Interleave: theory → formulas → scene → figure ── */
-    knowledgeLayer.theory.forEach((block, blockIndex) => {
+    theoryBlocks.forEach((block, blockIndex) => {
       items.push({ type: 'theory', data: block });
 
       // Formulas owned by this block
@@ -144,8 +224,9 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
         usedSimulators.add(matchedModule.simulator);
       }
 
-      // Figure every 2 blocks
-      if ((blockIndex + 1) % 2 === 0 && figureIndex < figures.length) {
+      // Figure every 2 blocks (как раньше — по порядку содержательных блоков)
+      const logicalIdx = blockIndex - goalShift;
+      if (logicalIdx >= 0 && (logicalIdx + 1) % 2 === 0 && figureIndex < figures.length) {
         items.push({ type: 'figure', data: figures[figureIndex++] });
       }
     });
@@ -171,16 +252,13 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
     });
 
     return items;
-  }, [knowledgeLayer, theoryModules]);
-
-  const visibleContent = useMemo(
-    () => (detailedMode ? interleavedContent : interleavedContent.filter((item) => item.type !== 'figure')),
-    [detailedMode, interleavedContent],
-  );
+  }, [knowledgeLayer, theoryModules, lessonId]);
 
   useEffect(() => {
     if (!lessonId || !knowledgeLayer) return;
-    knowledgeLayer.theory.forEach((block) => progress.markTheoryRead(lessonId, block.id));
+    theoryBlocksWithGoal(knowledgeLayer, lessonId).forEach((block) =>
+      progress.markTheoryRead(lessonId, block.id),
+    );
   }, [knowledgeLayer, lessonId, progress]);
 
   if (!knowledgeLayer) {
@@ -195,9 +273,9 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
     <Stack spacing={2}>
       <Stack direction="row" justifyContent="flex-end">
         <Chip
-          label={detailedMode ? 'Подробный режим' : 'Краткий режим'}
-          color={detailedMode ? 'primary' : 'default'}
-          onClick={() => setDetailedMode((prev) => !prev)}
+          label={diagramsCompact ? 'Рисунки: компактно' : 'Рисунки: обычный размер'}
+          color={diagramsCompact ? 'default' : 'primary'}
+          onClick={() => setDiagramsCompact((prev) => !prev)}
           variant="outlined"
           size="small"
         />
@@ -212,7 +290,7 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
             Теория, формулы, сцены и иллюстрации идут в том порядке, в котором студент выполняет расчёт по методичке.
           </Typography>
           <Stack spacing={1.5}>
-            {visibleContent.map((item) => {
+            {interleavedContent.map((item) => {
               if (item.type === 'theory') {
                 const block = item.data as { id: string; heading: string; text: string; keywords: string[] };
                 return <KnowledgeBlock key={block.id} block={block} glossary={glossary} />;
@@ -230,7 +308,9 @@ export default function TheorySection({ lessonId }: TheorySectionProps) {
                 );
               }
               const figure = item.data as { id: string; path: string; caption: string };
-              return <FigureZoom key={figure.id} src={figure.path} caption={figure.caption} />;
+              return (
+                <FigureZoom key={figure.id} src={figure.path} caption={figure.caption} compact={diagramsCompact} />
+              );
             })}
           </Stack>
         </CardContent>
@@ -255,7 +335,11 @@ function KnowledgeBlock({
       <Typography variant="subtitle2" color="primary.main">
         {block.heading}
       </Typography>
-      <Typography variant="body2" sx={{ mt: 0.5 }}>
+      <Typography
+        variant="body2"
+        component="div"
+        sx={{ mt: 0.5, whiteSpace: 'pre-wrap', tabSize: 4, wordBreak: 'break-word' }}
+      >
         <TermHighlight text={displayText} glossary={glossary} />
       </Typography>
       {isLong && (

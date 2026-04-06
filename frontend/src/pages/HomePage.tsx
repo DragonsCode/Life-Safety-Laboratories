@@ -1,4 +1,4 @@
-﻿import { Box, Button, Card, CardActions, CardContent, Chip, Grid, Stack, Typography } from '@mui/material';
+import { Box, Button, Card, CardActions, CardContent, Chip, Grid, Stack, Typography } from '@mui/material';
 import AutoStoriesIcon from '@mui/icons-material/AutoStories';
 import ScienceIcon from '@mui/icons-material/Science';
 import QuizIcon from '@mui/icons-material/Quiz';
@@ -14,12 +14,12 @@ export default function HomePage() {
   const progress = useProgress();
 
   return (
-    <Box>
+    <Box data-testid="home-page">
       <Typography variant="h3" gutterBottom>
         Life-Safety Laboratories
       </Typography>
       <Typography variant="h6" color="text.secondary" sx={{ mb: 3, maxWidth: 900 }}>
-        Полный интерактивный практикум по БЖД: теория, лабораторные и тесты по 10 занятиям в формате методички.
+        Полный интерактивный практикум по БЖД: теория, лабораторные и тесты по занятиям в формате методички.
       </Typography>
 
       <Grid container spacing={2.5}>
@@ -75,7 +75,7 @@ export default function HomePage() {
                       startIcon={<ScienceIcon />}
                       onClick={() => navigate(`/lesson/${lesson.id}/lab`)}
                     >
-                      Лабораторная
+                      Практика
                     </Button>
                     <Button
                       variant="outlined"

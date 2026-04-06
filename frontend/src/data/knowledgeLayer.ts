@@ -40,6 +40,12 @@ export interface KnowledgePracticeMethod {
   steps?: string[];
 }
 
+/** Явный порядок теории, формул и рисунков (как в методичке). Если задан, вкладка «Теория» строит поток только по нему. */
+export type KnowledgeContentFlowStep =
+  | { step: 'theory'; blockId: string }
+  | { step: 'formula'; id: string }
+  | { step: 'figure'; id: string };
+
 export interface KnowledgeLayer {
   id: string;
   title: string;
@@ -47,6 +53,8 @@ export interface KnowledgeLayer {
   theory: KnowledgeTheoryBlock[];
   formulas: KnowledgeFormula[];
   figures: KnowledgeFigure[];
+  /** Опционально: последовательность блоков для занятий с жёстким порядком иллюстраций. */
+  contentFlow?: KnowledgeContentFlowStep[];
   tables: unknown;
   practice: { methods: KnowledgePracticeMethod[] };
   quiz: KnowledgeQuiz[];
@@ -64,6 +72,11 @@ import lab7 from '../content/labs/lab-7.json';
 import lab8 from '../content/labs/lab-8.json';
 import lab9 from '../content/labs/lab-9.json';
 import lab10 from '../content/labs/lab-10.json';
+import lab11 from '../content/labs/lab-11.json';
+import lab12 from '../content/labs/lab-12.json';
+import lab13 from '../content/labs/lab-13.json';
+import lab14 from '../content/labs/lab-14.json';
+import lab15 from '../content/labs/lab-15.json';
 
 const layers: Record<number, KnowledgeLayer> = {
   1: lab1 as unknown as KnowledgeLayer,
@@ -76,12 +89,36 @@ const layers: Record<number, KnowledgeLayer> = {
   8: lab8 as unknown as KnowledgeLayer,
   9: lab9 as unknown as KnowledgeLayer,
   10: lab10 as unknown as KnowledgeLayer,
+  11: lab11 as unknown as KnowledgeLayer,
+  12: lab12 as unknown as KnowledgeLayer,
+  13: lab13 as unknown as KnowledgeLayer,
+  14: lab14 as unknown as KnowledgeLayer,
+  15: lab15 as unknown as KnowledgeLayer,
 };
 
 /* ---- Public API ---- */
 
 export function getKnowledgeLayer(lessonId: LessonId): KnowledgeLayer | undefined {
   return layers[lessonId];
+}
+
+/**
+ * Занятия 6–15: поле `goal` из JSON дублируется первым синтетическим блоком «Цель работы» в теории (в JSON отдельного блока нет).
+ * Занятия 1–5: цель задана первым элементом массива `theory` в lab-N.json; под заголовком страницы не показывается (см. LessonPage).
+ */
+export function shouldInlineGoalInTheory(lessonId: LessonId): boolean {
+  return lessonId >= 6 && lessonId <= 15;
+}
+
+export function theoryBlocksWithGoal(layer: KnowledgeLayer, lessonId: LessonId): KnowledgeTheoryBlock[] {
+  if (!shouldInlineGoalInTheory(lessonId) || !layer.goal?.trim()) return layer.theory;
+  const goalBlock: KnowledgeTheoryBlock = {
+    id: `${layer.id}-goal`,
+    heading: 'Цель работы',
+    text: layer.goal.trim(),
+    keywords: ['цель работы'],
+  };
+  return [goalBlock, ...layer.theory];
 }
 
 /** Convert knowledge formula into FormulaBlock props */
@@ -595,6 +632,42 @@ export function buildPracticeMethods(lessonId: LessonId): PracticeMethod[] {
             r.Ush < 36
               ? `Uш = ${r.Ush.toFixed(2)} В — ниже безопасного порога 36 В.`
               : `Uш = ${r.Ush.toFixed(2)} В — опасное шаговое напряжение!`,
+        },
+      ];
+
+    case 11:
+      return [
+        {
+          id: 'three-phase-touch-current',
+          title: 'Оценка тока через тело (упрощённо)',
+          description: 'I ≈ U / R_{h} для сети с глухозаземлённой нейтралью (нормальный режим, касание фазы).',
+          params: [
+            { key: 'Uphi', label: 'U_ф', unit: 'В', defaultValue: 220 },
+            { key: 'Rh', label: 'R_h', unit: 'Ом', defaultValue: 1000 },
+          ],
+          steps: [
+            {
+              label: 'Ток I_h',
+              formula: 'I_h ≈ U_ф / R_h',
+              compute: (p) => p.Uphi / Math.max(1, p.Rh),
+              resultKey: 'Ih',
+              resultUnit: 'А',
+            },
+            {
+              label: 'I_h (мА)',
+              formula: '×1000',
+              compute: (p) => (p.Uphi / Math.max(1, p.Rh)) * 1000,
+              resultKey: 'IhMA',
+              resultUnit: 'мА',
+            },
+          ],
+          conclusionFn: (r) => {
+            const ma = r.IhMA ?? 0;
+            if (ma < 0.5) return `I ≈ ${ma.toFixed(2)} мА — ощущение слабое или отсутствует.`;
+            if (ma < 10) return `I ≈ ${ma.toFixed(2)} мА — ощутимый ток.`;
+            if (ma < 100) return `I ≈ ${ma.toFixed(2)} мА — опасная зона (неотпускающий ток и выше).`;
+            return `I ≈ ${ma.toFixed(2)} мА — крайне опасно.`;
+          },
         },
       ];
 

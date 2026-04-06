@@ -32,6 +32,14 @@ const sceneTitle: Record<string, string> = {
   'ground-current-spread': 'Растекание тока в грунте от заземлителя',
   'step-voltage': 'Шаговое напряжение между точками грунта',
   'equipotential-zones': 'Эквипотенциальные линии вокруг заземлителя',
+  'l11-it-touch': 'ИТ (изолированная нейтраль): касание фазы',
+  'l11-tn-normal-touch': 'TN (заземлённая нейтраль): касание фазы',
+  'l11-tn-emergency-touch': 'TN (авария): КЗ L1→земля и касание',
+  'l12-tn-fault-modes': 'TN (теория): режимы КЗ и PEN',
+  'l12-earthing-electrodes': 'Одиночный заземлитель и число электродов',
+  'l13-fire-triangle': 'Треугольник горения: горючее, окислитель, зажигание',
+  'l13-vapor-nkpr': 'Концентрация C и НКПР (нижний концентрационный предел)',
+  'l13-delta-p-category': 'ΔP взрыва и порог 5 кПа (категория помещения А)',
 };
 import {
   brightness,
@@ -59,7 +67,13 @@ import {
   waveguideLengthM,
 } from '../../formulas/shielding';
 import { fieldStrengthShuleikin, attenuationFactorF, xParameter } from '../../formulas/hfField';
-import { fieldStrengthUHF, normalizedPatternFactor, distanceFromPhaseCenter } from '../../formulas/uhfField';
+import {
+  fieldStrengthUHF,
+  normalizedPatternFactor,
+  distanceFromPhaseCenter,
+  pduForFrequencyVpm,
+  RADIATION_DOSE_FREQ_SLIDER_MAX_MHZ,
+} from '../../formulas/uhfField';
 import {
   bodyCurrentMA,
   totalBodyImpedance,
@@ -68,6 +82,10 @@ import {
   currentDensity,
   groundPotential,
   stepVoltage,
+  lesson11TouchEstimate,
+  lesson12TnLabEstimate,
+  lesson12SingleElectrodeResistanceOhm,
+  lesson12ElectrodeCount,
 } from '../../formulas/electricSafety';
 const TheoryScene3D = lazy(() => import('./TheoryScene3D'));
 const isTestEnvironment = import.meta.env.MODE === 'test';
@@ -94,6 +112,57 @@ function getDefaults(type: TheorySimulatorType) {
   switch (type) {
     case 'light-multi-source':
       return { a: 80, b: 80, c: 80, d: 80 };
+    case 'emi-waveguide':
+      /* D мм, ε, L дБ — согласовано с ползунками (D max 50 мм) */
+      return { a: 15, b: 7, c: 30, d: 120 };
+    case 'hf-field-strength':
+      /* λ, P кВт, Ga, d м — согласовано с TheoryScene3D SceneContent */
+      return { a: 500, b: 250, c: 1.05, d: 2000 };
+    case 'hf-soil-attenuation':
+      /* σ (слайдер ×10⁻³), λ, d */
+      return { a: 5, b: 500, c: 2000, d: 120 };
+    case 'uhf-field-strength':
+      /* P Вт, G, H м, r м — согласовано с TheoryScene3D SceneContent */
+      return { a: 50000, b: 15, c: 200, d: 400 };
+    case 'radiation-dose':
+      return { a: 100, b: 0, c: 0, d: 0 };
+    case 'uhf-antenna-pattern':
+      return { a: 12, b: 25, c: 0, d: 0 };
+    case 'electric-current-body':
+      return { a: 220, b: 5000, c: 0, d: 0 };
+    case 'electric-resistance':
+      // a=Rн (Ом), b=C (нФ), c=Rв (Ом), d=f (Гц) — как в ElectricResistanceScene / MiniSimulator
+      return { a: 5000, b: 20, c: 500, d: 50 };
+    case 'step-voltage':
+      /* a=Iz (А), b=rho (Ом·м), c=x (м), d=a(м×0.1) -> a=d/10 */
+      return { a: 10, b: 200, c: 5, d: 8 };
+    case 'equipotential-zones':
+      /* a=Iz (А), b=rho (Ом·м) — в сцене используется только эти два параметра */
+      return { a: 10, b: 200, c: 0, d: 0 };
+    case 'l11-it-touch':
+      // a=Uφ (В), b=Rh (Ом), c=Rиз (Ом/фаза), d=фаза (0..2)
+      return { a: 220, b: 1000, c: 6000, d: 1 };
+    case 'l11-tn-normal-touch':
+      // a=Uφ (В), b=Rh (Ом), c=Rз (Ом), d=фаза (0..2)
+      return { a: 220, b: 1000, c: 10, d: 1 };
+    case 'l11-tn-emergency-touch':
+      // a=Uφ (В), b=Rh (Ом), c=Rзм (Ом), d=фаза (0..2)
+      return { a: 220, b: 1000, c: 15, d: 2 };
+    case 'l12-tn-fault-modes':
+      // a=Uφ (В), b=Zn (Ом), c=ZH (Ом), d=режим (0..7)
+      return { a: 220, b: 2.4, c: 1.2, d: 0 };
+    case 'l12-earthing-electrodes':
+      // a=ρ (Ом·м), b=l (м), c=d (мм), d=t (м)
+      return { a: 100, b: 3, c: 50, d: 2 };
+    case 'l13-fire-triangle':
+      // a,b,c ∈ [0,1] — «наличие» компонентов (учебная модель)
+      return { a: 0.85, b: 0.85, c: 0.85, d: 0 };
+    case 'l13-vapor-nkpr':
+      // a=C (%), b=НКПР (%)
+      return { a: 3.5, b: 2, c: 0, d: 0 };
+    case 'l13-delta-p-category':
+      // a=ΔP (кПа)
+      return { a: 4, b: 0, c: 0, d: 0 };
     default:
       return { a: 500, b: 1.2, c: 2.5, d: 120 };
   }
@@ -454,7 +523,7 @@ export default function MiniSimulator({ type }: SimulatorProps) {
         const P = Math.max(0.1, b);
         const Ga = Math.max(0.1, c);
         const dist = Math.max(100, d);
-        const x = xParameter(lambdaVal, dist, 7, 0.005);
+        const x = xParameter(dist, lambdaVal, 7, 0.005);
         const F = attenuationFactorF(x);
         const E = fieldStrengthShuleikin(P, Ga, dist, F);
         return {
@@ -481,7 +550,7 @@ export default function MiniSimulator({ type }: SimulatorProps) {
         const lambdaVal = Math.max(10, a);
         const dist = Math.max(100, b);
         const sigma = Math.max(0.001, c / 1000);
-        const x = xParameter(lambdaVal, dist, 7, sigma);
+        const x = xParameter(dist, lambdaVal, 7, sigma);
         const F = attenuationFactorF(x);
         return {
           controls: (
@@ -504,7 +573,7 @@ export default function MiniSimulator({ type }: SimulatorProps) {
         const sigma = Math.max(0.001, a / 1000);
         const lambdaVal = Math.max(10, b);
         const dist = Math.max(100, c);
-        const x = xParameter(lambdaVal, dist, 7, sigma);
+        const x = xParameter(dist, lambdaVal, 7, sigma);
         const F = attenuationFactorF(x);
         return {
           controls: (
@@ -567,21 +636,35 @@ export default function MiniSimulator({ type }: SimulatorProps) {
           ),
           values: [
             <ValueLine key="v1" label="F(Δ)" value={Fd.toFixed(4)} />,
+            <Typography key="v2" variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
+              {
+                'В упрощённой модели множитель диаграммы F зависит только от угла Δ (здесь F = cos Δ). Коэффициент G не входит в F, но в полной формуле E поля входит как √(P·G)·F(Δ)/R — на 3D-сцене G задаёт только ширину главного лепестка для наглядности.'
+              }
+            </Typography>,
           ],
         };
       }
       case 'radiation-dose': {
-        const freqMHz = Math.max(0.03, a);
-        const E_pdu = freqMHz < 3 ? 50 : freqMHz < 30 ? 20 : freqMHz < 300 ? 10 : 5;
+        const freqMHz = Math.max(0.03, Math.min(RADIATION_DOSE_FREQ_SLIDER_MAX_MHZ, a));
+        const E_pdu = pduForFrequencyVpm(freqMHz);
         return {
           controls: (
             <Stack spacing={1.2}>
-              <Typography variant="caption">f (МГц): {a.toFixed(1)}</Typography>
-              <Slider value={a} min={0.03} max={30000} step={10} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">f (МГц): {freqMHz.toFixed(2)}</Typography>
+              <Slider
+                value={Math.min(RADIATION_DOSE_FREQ_SLIDER_MAX_MHZ, a)}
+                min={0.03}
+                max={RADIATION_DOSE_FREQ_SLIDER_MAX_MHZ}
+                step={0.5}
+                onChange={(_, v) => setA(v as number)}
+              />
             </Stack>
           ),
           values: [
             <ValueLine key="v1" label="ПДУ E" value={`${E_pdu} В/м`} />,
+            <Typography key="v2" variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {'Значение ПДУ задаётся таблицей по диапазону f (ступени на границах 3, 30, 50, 300 МГц).'}
+            </Typography>,
           ],
         };
       }
@@ -715,6 +798,255 @@ export default function MiniSimulator({ type }: SimulatorProps) {
             <ValueLine key="v1" label="φ(5 м)" value={`${phi5.toFixed(2)} В`} />,
             <ValueLine key="v2" label="φ(10 м)" value={`${phi10.toFixed(2)} В`} />,
             <ValueLine key="v3" label="φ(20 м)" value={`${phi20.toFixed(2)} В`} />,
+          ],
+        };
+      }
+      case 'l12-tn-fault-modes': {
+        const UphiV = Math.max(1, a);
+        const ZnOhm = Math.max(0.1, b);
+        const ZHOhm = Math.max(0.05, c);
+        const mode = Math.min(7, Math.max(0, Math.round(d)));
+        const modeIds = [
+          'sc_enclosure',
+          'sc_enclosure_repeat',
+          'break_after_fault',
+          'break_before_ok',
+          'break_after_repeat',
+          'break_before_repeat',
+          'phase_to_soil',
+          'normal',
+        ] as const;
+        const r = lesson12TnLabEstimate({
+          scenario: modeIds[mode],
+          UphiV,
+          ZnOhm,
+          ZHOhm,
+          R0Ohm: 4,
+          RnOhm: 10,
+          RzmOhm: 100,
+          RhOhm: 1000,
+        });
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">Uφ (В): {UphiV.toFixed(0)}</Typography>
+              <Slider value={a} min={127} max={254} step={1} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">Zn (Ом): {ZnOhm.toFixed(2)}</Typography>
+              <Slider value={b} min={0.2} max={8} step={0.1} onChange={(_, v) => setB(v as number)} />
+              <Typography variant="caption">ZH (Ом): {ZHOhm.toFixed(2)}</Typography>
+              <Slider value={c} min={0.1} max={6} step={0.1} onChange={(_, v) => setC(v as number)} />
+              <Typography variant="caption">Режим (0..7): {mode}</Typography>
+              <Slider value={mode} min={0} max={7} step={1} onChange={(_, v) => setD(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="Iк.з." value={`${r.IkzA.toFixed(1)} А`} />,
+            <ValueLine key="v2" label="Uкорп" value={`${r.UenclosureV.toFixed(1)} В`} />,
+            <ValueLine key="v3" label="Iч" value={`${r.IbodyMA.toFixed(2)} мА`} />,
+          ],
+        };
+      }
+      case 'l12-earthing-electrodes': {
+        const rho = Math.max(10, a);
+        const lM = Math.max(1, b);
+        const dMm = Math.max(20, c);
+        const tM = Math.max(0.5, d);
+        const dM = dMm / 1000;
+        const R1 = lesson12SingleElectrodeResistanceOhm({ rhoOhmM: rho, lM, dM, tM });
+        const eta = 0.75;
+        const n = lesson12ElectrodeCount({ RsingleOhm: R1, etaZ: eta, RtargetOhm: 4 });
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">ρ (Ом·м): {rho.toFixed(0)}</Typography>
+              <Slider value={a} min={10} max={500} step={5} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">l (м): {lM.toFixed(1)}</Typography>
+              <Slider value={b} min={1} max={8} step={0.5} onChange={(_, v) => setB(v as number)} />
+              <Typography variant="caption">d (мм): {dMm.toFixed(0)}</Typography>
+              <Slider value={c} min={20} max={100} step={5} onChange={(_, v) => setC(v as number)} />
+              <Typography variant="caption">t (м): {tM.toFixed(1)}</Typography>
+              <Slider value={d} min={0.5} max={3.5} step={0.1} onChange={(_, v) => setD(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="Rод" value={Number.isFinite(R1) ? `${R1.toFixed(2)} Ом` : '—'} />,
+            <ValueLine key="v2" label="ηз" value={`${eta}`} />,
+            <ValueLine key="v3" label="n" value={Number.isFinite(n) ? `${n.toFixed(2)} → ${Math.ceil(n)} шт.` : '—'} />,
+          ],
+        };
+      }
+      case 'l13-fire-triangle': {
+        const fuel = Math.max(0, Math.min(1, a));
+        const ox = Math.max(0, Math.min(1, b));
+        const ign = Math.max(0, Math.min(1, c));
+        const prod = fuel * ox * ign;
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">Горючее (0…1): {fuel.toFixed(2)}</Typography>
+              <Slider value={fuel} min={0} max={1} step={0.05} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">Окислитель (0…1): {ox.toFixed(2)}</Typography>
+              <Slider value={ox} min={0} max={1} step={0.05} onChange={(_, v) => setB(v as number)} />
+              <Typography variant="caption">Источник зажигания (0…1): {ign.toFixed(2)}</Typography>
+              <Slider value={ign} min={0} max={1} step={0.05} onChange={(_, v) => setC(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="f·o·i (условно)" value={prod.toFixed(3)} />,
+            <ValueLine key="v2" label="Пламя на схеме" value={prod > 0.08 ? 'да' : 'нет'} />,
+          ],
+        };
+      }
+      case 'l13-vapor-nkpr': {
+        const C = Math.max(0, a);
+        const nkpr = Math.max(0.05, b);
+        const ok = C >= nkpr;
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">C (%): {C.toFixed(2)}</Typography>
+              <Slider value={a} min={0} max={15} step={0.1} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">НКПР (%): {nkpr.toFixed(2)}</Typography>
+              <Slider value={b} min={0.2} max={10} step={0.05} onChange={(_, v) => setB(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="Сравнение" value={ok ? 'C ≥ НКПР' : 'C < НКПР'} />,
+          ],
+        };
+      }
+      case 'l13-delta-p-category': {
+        const dp = Math.max(0, a);
+        const catA = dp > 5;
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">ΔP (кПа): {dp.toFixed(2)}</Typography>
+              <Slider value={a} min={0} max={25} step={0.25} onChange={(_, v) => setA(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="Порог 5 кПа" value={catA ? 'ΔP > 5 → кат. А' : 'ΔP ≤ 5'} />,
+          ],
+        };
+      }
+      case 'l11-it-touch': {
+        const UphiV = Math.max(1, a);
+        const RhOhm = Math.max(1, b);
+        const RisoOhm = Math.max(100, c);
+        const phase = Math.min(2, Math.max(0, Math.round(d)));
+        const { UprV, ImA } = lesson11TouchEstimate({
+          network: 'IT',
+          regime: 'normal',
+          touchedPhaseIndex: phase,
+          UphiV,
+          RhOhm,
+          RgOhm: 10,
+          RzmOhm: 15,
+          RisoOhm,
+        });
+        const danger = classifyCurrentDanger(ImA, true);
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">Uφ (В): {UphiV.toFixed(0)}</Typography>
+              <Slider value={a} min={127} max={254} step={1} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">Rh (Ом): {RhOhm.toFixed(0)}</Typography>
+              <Slider value={b} min={300} max={5000} step={50} onChange={(_, v) => setB(v as number)} />
+              <Typography variant="caption">Rиз (Ом/фаза): {RisoOhm.toFixed(0)}</Typography>
+              <Slider value={c} min={500} max={20000} step={100} onChange={(_, v) => setC(v as number)} />
+              <Typography variant="caption">Фаза касания (0=L1,1=L2,2=L3): {phase}</Typography>
+              <Slider value={phase} min={0} max={2} step={1} onChange={(_, v) => setD(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="Uпр" value={`${UprV.toFixed(1)} В`} />,
+            <ValueLine key="v2" label="I" value={`${ImA.toFixed(2)} мА`} />,
+            <ValueLine
+              key="v3"
+              label="Оценка"
+              value={danger === 'safe' ? 'Безопасный уровень' : danger === 'perceptible' ? 'Ощутимый ток' : danger === 'non-releasing' ? 'Неотпускающий' : 'Опасная зона'}
+            />,
+          ],
+        };
+      }
+      case 'l11-tn-normal-touch': {
+        const UphiV = Math.max(1, a);
+        const RhOhm = Math.max(1, b);
+        const RgOhm = Math.max(0.1, c);
+        const phase = Math.min(2, Math.max(0, Math.round(d)));
+        const { UprV, ImA } = lesson11TouchEstimate({
+          network: 'TN',
+          regime: 'normal',
+          touchedPhaseIndex: phase,
+          UphiV,
+          RhOhm,
+          RgOhm,
+          RzmOhm: 15,
+          RisoOhm: 6000,
+        });
+        const danger = classifyCurrentDanger(ImA, true);
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">Uφ (В): {UphiV.toFixed(0)}</Typography>
+              <Slider value={a} min={127} max={254} step={1} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">Rh (Ом): {RhOhm.toFixed(0)}</Typography>
+              <Slider value={b} min={300} max={5000} step={50} onChange={(_, v) => setB(v as number)} />
+              <Typography variant="caption">Rз (Ом): {RgOhm.toFixed(1)}</Typography>
+              <Slider value={c} min={0.5} max={80} step={0.5} onChange={(_, v) => setC(v as number)} />
+              <Typography variant="caption">Фаза касания (0=L1,1=L2,2=L3): {phase}</Typography>
+              <Slider value={phase} min={0} max={2} step={1} onChange={(_, v) => setD(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="Uпр" value={`${UprV.toFixed(1)} В`} />,
+            <ValueLine key="v2" label="I" value={`${ImA.toFixed(2)} мА`} />,
+            <ValueLine
+              key="v3"
+              label="Оценка"
+              value={danger === 'safe' ? 'Безопасный уровень' : danger === 'perceptible' ? 'Ощутимый ток' : danger === 'non-releasing' ? 'Неотпускающий' : 'Опасная зона'}
+            />,
+          ],
+        };
+      }
+      case 'l11-tn-emergency-touch': {
+        const UphiV = Math.max(1, a);
+        const RhOhm = Math.max(1, b);
+        const RzmOhm = Math.max(0.1, c);
+        const phase = Math.min(2, Math.max(0, Math.round(d)));
+        const { UprV, ImA } = lesson11TouchEstimate({
+          network: 'TN',
+          regime: 'emergency',
+          touchedPhaseIndex: phase,
+          UphiV,
+          RhOhm,
+          RgOhm: 10,
+          RzmOhm,
+          RisoOhm: 6000,
+        });
+        const danger = classifyCurrentDanger(ImA, true);
+        return {
+          controls: (
+            <Stack spacing={1.2}>
+              <Typography variant="caption">Uφ (В): {UphiV.toFixed(0)}</Typography>
+              <Slider value={a} min={127} max={254} step={1} onChange={(_, v) => setA(v as number)} />
+              <Typography variant="caption">Rh (Ом): {RhOhm.toFixed(0)}</Typography>
+              <Slider value={b} min={300} max={5000} step={50} onChange={(_, v) => setB(v as number)} />
+              <Typography variant="caption">Rзм (Ом): {RzmOhm.toFixed(1)}</Typography>
+              <Slider value={c} min={0.5} max={80} step={0.5} onChange={(_, v) => setC(v as number)} />
+              <Typography variant="caption">Фаза касания (0=L1,1=L2,2=L3): {phase}</Typography>
+              <Slider value={phase} min={0} max={2} step={1} onChange={(_, v) => setD(v as number)} />
+            </Stack>
+          ),
+          values: [
+            <ValueLine key="v1" label="Uпр" value={`${UprV.toFixed(1)} В`} />,
+            <ValueLine key="v2" label="I" value={`${ImA.toFixed(2)} мА`} />,
+            <ValueLine
+              key="v3"
+              label="Оценка"
+              value={danger === 'safe' ? 'Безопасный уровень' : danger === 'perceptible' ? 'Ощутимый ток' : danger === 'non-releasing' ? 'Неотпускающий' : 'Опасная зона'}
+            />,
           ],
         };
       }

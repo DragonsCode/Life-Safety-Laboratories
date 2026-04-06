@@ -1,4 +1,4 @@
-export type LessonId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type LessonId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
 
 export type TheorySimulatorType =
   | 'light-flux'
@@ -29,7 +29,15 @@ export type TheorySimulatorType =
   | 'electric-frequency-effect'
   | 'ground-current-spread'
   | 'step-voltage'
-  | 'equipotential-zones';
+  | 'equipotential-zones'
+  | 'l11-it-touch'
+  | 'l11-tn-normal-touch'
+  | 'l11-tn-emergency-touch'
+  | 'l12-tn-fault-modes'
+  | 'l12-earthing-electrodes'
+  | 'l13-fire-triangle'
+  | 'l13-vapor-nkpr'
+  | 'l13-delta-p-category';
 
 export interface TheoryMiniQuestion {
   question: string;
@@ -67,7 +75,8 @@ export interface LabStep {
   id: string;
   type: LabStepType;
   title: string;
-  whatToDo: string;
+  /** Один абзац или несколько пунктов маркированного списка под «Что делаем:». */
+  whatToDo: string | string[];
   why: string;
   sceneAction: string;
   hint: string;
@@ -77,9 +86,12 @@ export interface LabStep {
 export interface LabVariant {
   variant: number;
   ticketLastDigits: number[];
-  values: Record<string, number>;
+  /** Числа и, при необходимости, строковые поля (например диапазон f для табл. 8.2). */
+  values: Record<string, number | string>;
   sourceNote: string;
   validated: boolean;
+  /** Подпись столбца в `VariantTable` вместо номера варианта (например «Ацетон» для табл. 13.3). */
+  displayLabel?: string;
 }
 
 export interface LabWizard {

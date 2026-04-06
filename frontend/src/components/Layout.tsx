@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, Container, Fab, Stack, Typography, Zoom } from '@mui/material';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { Outlet, useLocation } from 'react-router-dom';
@@ -36,11 +36,12 @@ export default function Layout() {
     const root = document.getElementById('root');
     const scrollingEl = document.scrollingElement as HTMLElement | null;
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
-    document.body.scrollTo({ top: 0, behavior: 'smooth' });
-    root?.scrollTo({ top: 0, behavior: 'smooth' });
-    scrollingEl?.scrollTo({ top: 0, behavior: 'smooth' });
+    // Some environments (tests, embedded WebViews) may not implement scrollTo.
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
+    try { document.documentElement.scrollTo?.({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
+    try { document.body.scrollTo?.({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
+    try { root?.scrollTo?.({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
+    try { scrollingEl?.scrollTo?.({ top: 0, behavior: 'smooth' }); } catch { /* noop */ }
   };
 
   useEffect(() => {

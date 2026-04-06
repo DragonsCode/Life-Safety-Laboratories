@@ -1,6 +1,6 @@
 export interface ManualAsset {
   id: string;
-  lessonId: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+  lessonId: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11;
   path: string;
   caption: string;
   alt: string;
@@ -168,9 +168,17 @@ export const manualAssets: ManualAsset[] = [
     alt: 'Шаговое напряжение',
     pageHint: 'стр. ~143',
   },
+  {
+    id: 'l11-fig-sample',
+    lessonId: 11,
+    path: '/assets/manual-imported/Рисунок 11.1. Электроустановка напряжением 0,4кВ с глухозаземленной нейтралью.png',
+    caption: 'Рисунок 11.1 — электроустановка 0,4 кВ с глухозаземлённой нейтралью',
+    alt: 'Схема электроустановки с глухозаземлённой нейтралью',
+    pageHint: 'Занятие №11 методички',
+  },
 ];
 
-export function assetsByLesson(lessonId: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10): ManualAsset[] {
+export function assetsByLesson(lessonId: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11): ManualAsset[] {
   return manualAssets.filter((asset) => asset.lessonId === lessonId);
 }
 
