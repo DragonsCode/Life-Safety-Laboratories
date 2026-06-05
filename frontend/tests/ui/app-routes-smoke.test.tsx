@@ -19,6 +19,6 @@ describe('app routes smoke', () => {
       </ThemeProvider>
     );
 
-    expect(await screen.findByText(/Life Safety Laboratories/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Life-Safety Laboratories/i)).toBeInTheDocument();
   });
 });

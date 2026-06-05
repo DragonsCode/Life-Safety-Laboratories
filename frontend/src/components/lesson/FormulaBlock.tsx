@@ -20,6 +20,15 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { resolveAssetPath } from '../../data/assetResolver';
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
  * Render formula expression with proper subscripts/superscripts.
  * Patterns handled:
@@ -30,7 +39,7 @@ import { resolveAssetPath } from '../../data/assetResolver';
  *  - Σe style (Greek + single latin lowercase)
  */
 function renderFormulaExpression(expr: string): string {
-  let html = expr;
+  let html = escapeHtml(expr);
   // 1) Explicit LaTeX-like markers: _{…} and ^{…}
   html = html.replace(/_\{([^}]+)\}/g, '<sub>$1</sub>');
   html = html.replace(/\^\{([^}]+)\}/g, '<sup>$1</sup>');

@@ -8,3 +8,11 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     disconnect() {}
   } as unknown as typeof globalThis.ResizeObserver;
 }
+
+if (typeof window.scrollTo === 'undefined') {
+  window.scrollTo = () => {};
+}
+
+if (typeof HTMLElement.prototype.scrollTo === 'undefined') {
+  HTMLElement.prototype.scrollTo = () => {};
+}
