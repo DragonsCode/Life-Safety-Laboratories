@@ -152,7 +152,9 @@ export function stepVoltage(
 /**
  * Безопасное расстояние — дистанция, на которой Uш < threshold.
  * Решаем: Iз·ρ·a / (2π·x·(x+a)) < threshold
- * Итерируем от x=1 с шагом 0.5 пока Uш > threshold.
+ * Solve x² + a·x = Iз·ρ·a / (2π·threshold), then round up on the
+ * 0.5 m grid (minimum 0.5 m) and verify the strict voltage inequality.
+ * Throws when the result cannot be verified within floating-point range.
  */
 export function safeDistance(
   faultCurrentA: number,
@@ -163,12 +165,21 @@ export function safeDistance(
   assertFinitePositive(faultCurrentA, 'faultCurrentA');
   assertFinitePositive(soilResistivityOhmM, 'soilResistivityOhmM');
   assertFinitePositive(thresholdV, 'thresholdV');
-  let x = 0.5;
-  while (x < 100) {
-    if (stepVoltage(faultCurrentA, soilResistivityOhmM, x, stepLengthM) < thresholdV) {
-      return x;
-    }
-    x += 0.5;
+  assertFinitePositive(stepLengthM, 'stepLengthM');
+  const coefficient = (faultCurrentA * soilResistivityOhmM * stepLengthM) / (2 * Math.PI * thresholdV);
+  if (!Number.isFinite(coefficient) || coefficient <= 0) {
+    throw new RangeError('Safe distance exceeds supported numerical range');
   }
-  return x;
+  // Rationalized positive root avoids subtracting two nearly equal numbers.
+  const halfStep = stepLengthM / 2;
+  const root = coefficient / (Math.hypot(halfStep, Math.sqrt(coefficient)) + halfStep);
+  const rounded = Math.max(0.5, Math.ceil(root * 2) / 2);
+  // Equality is not safe; also allow one grid step for floating-point rounding.
+  for (const distance of [rounded, rounded + 0.5]) {
+    const voltage = stepVoltage(faultCurrentA, soilResistivityOhmM, distance, stepLengthM);
+    if (Number.isFinite(distance) && Number.isFinite(voltage) && voltage < thresholdV) {
+      return distance;
+    }
+  }
+  throw new RangeError('Safe distance could not be verified within numerical range');
 }
